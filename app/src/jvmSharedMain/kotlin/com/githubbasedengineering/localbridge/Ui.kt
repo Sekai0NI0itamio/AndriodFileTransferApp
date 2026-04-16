@@ -43,6 +43,7 @@ fun LocalBridgeApp(
 ) {
     val controller = remember(platformBridge) { AppController(platformBridge) }
     val uiState by controller.uiState.collectAsState()
+    val errorMessage = uiState.errorMessage
 
     DisposableEffect(controller) {
         controller.start()
@@ -83,10 +84,10 @@ fun LocalBridgeApp(
                     ) {
                         HeaderSection(uiState)
 
-                        if (uiState.errorMessage != null) {
+                        if (errorMessage != null) {
                             MessageCard(
                                 title = "Attention Needed",
-                                message = uiState.errorMessage,
+                                message = errorMessage,
                                 actionLabel = "Dismiss",
                                 onAction = controller::dismissError,
                             )
