@@ -143,7 +143,7 @@ compose.desktop {
             macOS {
                 bundleID = "asd.itamio.localbridge"
                 dockName = "LocalBridge"
-                iconFile.set(project.file("branding/macos/ft.icns"))
+                iconFile.set(rootProject.file("branding/macos/ft.icns"))
             }
         }
     }

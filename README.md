@@ -21,7 +21,7 @@ This repository is configured to build on GitHub Actions.
 
 Artifacts uploaded by the workflow:
 
-- Android release APK/AAB
+- Android release APK/AAB, signed with your GitHub Actions keystore secrets
 - macOS DMG, packaged unsigned for personal use
 
 ## Release Identity
@@ -36,7 +36,7 @@ The packaged apps now carry explicit publisher metadata.
 
 ## Required Secrets
 
-Add the Android repository secrets in GitHub Actions if you want signed Android release artifacts.
+Add these repository secrets in GitHub Actions to sign Android release artifacts.
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
@@ -67,20 +67,16 @@ Then encode it for GitHub Secrets.
 base64 -i localbridge-release.jks | pbcopy
 ```
 
-Add the copied text to `ANDROID_KEYSTORE_BASE64`. Use the same password you entered for the keystore as both `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_PASSWORD` unless you intentionally chose separate ones. Set `ANDROID_KEY_ALIAS` to the alias you used, for example `localbridge`.
+Add the copied text to `ANDROID_KEYSTORE_BASE64`. Use the same password you entered for the keystore as both `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_PASSWORD` unless you intentionally chose separate ones. Set `ANDROID_KEY_ALIAS` to the alias in the keystore, or leave it unset and let the workflow auto-detect it from the uploaded keystore.
 
 ## macOS Build
 
-The macOS app now packages without a signing certificate or notarization credentials.
+The macOS app packages without a signing certificate or notarization credentials.
 
 When the GitHub Actions workflow runs, it builds an unsigned DMG for personal use. No Apple Developer certificate, app-specific password, or team ID is required for that path.
-
-### Add Android Secrets In GitHub
-
-In your repository on GitHub, open `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`, then create the Android secret names from the list above if you want signed Android release artifacts.
 
 ## Notes
 
 - Android uses cleartext HTTP for same-LAN transfer, so the manifest enables `usesCleartextTraffic`.
 - The current implementation is designed around both devices running the app while transferring.
-- macOS release packaging is intentionally unsigned to keep personal builds simple.
+- Android release packaging is signed on GitHub Actions, and macOS release packaging is intentionally unsigned.

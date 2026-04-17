@@ -27,7 +27,7 @@ jobs:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -55,7 +55,7 @@ jobs:
 
       - name: Set Android keystore path
         shell: bash
-        run: echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/localbridge-release.keystore" >> "$GITHUB_ENV"
+        run: echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/localbridge-release.keystore" >> "$GITHUB_ENV"
 
       - name: Materialize Android release keystore
         if: env.ANDROID_KEYSTORE_BASE64 != ''
@@ -63,6 +63,23 @@ jobs:
         run: |
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
           chmod 600 "$ANDROID_KEYSTORE_PATH"
+
+      - name: Resolve Android key alias
+        shell: bash
+        run: |
+          if [[ -n "${ANDROID_KEY_ALIAS:-}" ]] && keytool -list -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "Using Android key alias from secrets."
+            exit 0
+          fi
+
+          resolved_alias="$(keytool -list -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" | awk -F': ' '/Alias name:/{print $2; exit}')"
+
+          if [[ -z "$resolved_alias" ]]; then
+            echo "Unable to determine the Android keystore alias." >&2
+            exit 1
+          fi
+
+          echo "ANDROID_KEY_ALIAS=$resolved_alias" >> "$GITHUB_ENV"
 
       - name: Build Android release outputs
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace
