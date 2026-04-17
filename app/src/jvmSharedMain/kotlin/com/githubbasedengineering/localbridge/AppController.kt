@@ -140,11 +140,14 @@ class AppController(
             val binding = requireNotNull(NetworkUtils.findPreferredIpv4Binding()) {
                 "No local IPv4 address was found on the active network."
             }
+            val hostAddress = requireNotNull(binding.address.hostAddress) {
+                "Unable to resolve the selected IPv4 address."
+            }
             rebuildHttpClient(binding)
 
             val port = NetworkUtils.findOpenPort(binding.address)
             server = TransferServer(
-                host = binding.address.hostAddress,
+                host = hostAddress,
                 deviceId = deviceId,
                 deviceName = platformBridge.deviceName,
                 platformLabel = platformBridge.platformLabel,
@@ -165,7 +168,7 @@ class AppController(
 
             mutateState {
                 it.copy(
-                    localAddress = binding.address.hostAddress,
+                    localAddress = hostAddress,
                     localInterfaceName = binding.interfaceName,
                     routingModeLabel = if (binding.vpnBypassActive) {
                         "Physical interface (${binding.interfaceName})"
@@ -430,7 +433,7 @@ class AppController(
     ): UploadResult {
         val offer = inboundOffers[fingerprint] ?: return UploadResult(false, "No transfer offer exists for this file.")
         val partialFile = NetworkUtils.partialFile(platformBridge.appDataDir, fingerprint)
-        partialFile.parentFile.mkdirs()
+        partialFile.parentFile?.mkdirs()
 
         if (partialFile.exists() && partialFile.length() > offset) {
             RandomAccessFile(partialFile, "rw").use { file ->

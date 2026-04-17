@@ -18,7 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
@@ -129,7 +129,7 @@ private fun HeaderSection(uiState: AppUiState) {
                 text = "Professional local transfer for the same network.",
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Divider(color = Color.Black.copy(alpha = 0.08f))
+            HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
             InfoRow(label = "This device", value = uiState.deviceName)
             InfoRow(label = "Local address", value = uiState.localAddress?.let { address ->
                 uiState.serverPort?.let { port -> "$address:$port" } ?: address
