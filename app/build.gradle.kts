@@ -93,6 +93,10 @@ compose.desktop {
     application {
         mainClass = "com.githubbasedengineering.localbridge.MainKt"
 
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("compose-desktop.pro"))
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg)
             packageName = "LocalBridge"

@@ -4,30 +4,82 @@ import java.io.File
 import java.io.InputStream
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
+import java.net.Socket
 import java.security.MessageDigest
 import java.util.Collections
+import javax.net.SocketFactory
+
+data class LocalNetworkBinding(
+    val interfaceName: String,
+    val address: Inet4Address,
+    val vpnBypassActive: Boolean,
+)
+
+private data class NetworkCandidate(
+    val interfaceName: String,
+    val address: Inet4Address,
+    val vpnLike: Boolean,
+    val priority: Int,
+)
 
 object NetworkUtils {
-    fun findLocalIpv4Address(): InetAddress? {
-        val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            .filter { it.isUp && !it.isLoopback }
+    fun findPreferredIpv4Binding(): LocalNetworkBinding? {
+        val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+        val candidates = mutableListOf<NetworkCandidate>()
+        var vpnInterfacePresent = false
 
-        for (networkInterface in interfaces) {
-            val addresses = Collections.list(networkInterface.inetAddresses)
+        for (networkInterface in Collections.list(interfaces)) {
+            if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isPointToPoint || networkInterface.isVirtual) {
+                continue
+            }
+
+            val address = Collections.list(networkInterface.inetAddresses)
                 .filterIsInstance<Inet4Address>()
                 .filter { !it.isLoopbackAddress }
-            val siteLocal = addresses.firstOrNull { it.isSiteLocalAddress }
-            if (siteLocal != null) return siteLocal
-            val first = addresses.firstOrNull()
-            if (first != null) return first
+                .let { addresses ->
+                    addresses.firstOrNull { it.isSiteLocalAddress } ?: addresses.firstOrNull()
+                } ?: continue
+
+            val vpnLike = networkInterface.isVpnLike()
+            vpnInterfacePresent = vpnInterfacePresent || vpnLike
+            candidates += NetworkCandidate(
+                interfaceName = networkInterface.name,
+                address = address,
+                vpnLike = vpnLike,
+                priority = interfacePriority(networkInterface.name),
+            )
         }
-        return null
+
+        val selected = candidates
+            .filterNot(NetworkCandidate::vpnLike)
+            .minByOrNull(NetworkCandidate::priority)
+            ?: candidates.minByOrNull(NetworkCandidate::priority)
+            ?: return null
+
+        return LocalNetworkBinding(
+            interfaceName = selected.interfaceName,
+            address = selected.address,
+            vpnBypassActive = vpnInterfacePresent && !selected.vpnLike,
+        )
     }
 
-    fun findOpenPort(): Int = ServerSocket(0).use { socket ->
+    fun findLocalIpv4Address(): InetAddress? = findPreferredIpv4Binding()?.address
+
+    fun findOpenPort(bindAddress: InetAddress? = null): Int = (
+        if (bindAddress == null) {
+            ServerSocket(0)
+        } else {
+            ServerSocket(0, 50, bindAddress)
+        }
+    ).use { socket ->
         socket.localPort
+    }
+
+    fun createBoundSocketFactory(binding: LocalNetworkBinding?): SocketFactory? {
+        return binding?.let { InterfaceBoundSocketFactory(it.address) }
     }
 
     fun sanitizeFileName(name: String): String {
@@ -59,6 +111,67 @@ object NetworkUtils {
         val partialsDir = File(directory, "partials")
         partialsDir.mkdirs()
         return File(partialsDir, "$fingerprint.part")
+    }
+}
+
+private fun interfacePriority(name: String): Int = when {
+    name == "en0" -> 0
+    name == "en1" -> 1
+    name.startsWith("en") -> 10
+    name.startsWith("wlan") -> 15
+    name.startsWith("wifi") -> 16
+    name.startsWith("eth") -> 20
+    name.startsWith("bridge") -> 50
+    else -> 100
+}
+
+private fun NetworkInterface.isVpnLike(): Boolean {
+    val normalized = name.lowercase()
+    return normalized.startsWith("utun") ||
+        normalized.startsWith("tun") ||
+        normalized.startsWith("tap") ||
+        normalized.startsWith("ppp") ||
+        normalized.startsWith("ipsec") ||
+        normalized.startsWith("wg") ||
+        "vpn" in normalized ||
+        "wireguard" in normalized ||
+        "tailscale" in normalized ||
+        "zerotier" in normalized
+}
+
+private class InterfaceBoundSocketFactory(
+    private val localAddress: InetAddress,
+) : SocketFactory() {
+    override fun createSocket(): Socket = newBoundSocket(localAddress, 0)
+
+    override fun createSocket(host: String, port: Int): Socket {
+        return createSocket().apply {
+            connect(InetSocketAddress(host, port))
+        }
+    }
+
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket {
+        return newBoundSocket(localHost, localPort).apply {
+            connect(InetSocketAddress(host, port))
+        }
+    }
+
+    override fun createSocket(address: InetAddress, port: Int): Socket {
+        return createSocket().apply {
+            connect(InetSocketAddress(address, port))
+        }
+    }
+
+    override fun createSocket(address: InetAddress, port: Int, localHost: InetAddress, localPort: Int): Socket {
+        return newBoundSocket(localHost, localPort).apply {
+            connect(InetSocketAddress(address, port))
+        }
+    }
+
+    private fun newBoundSocket(bindHost: InetAddress, bindPort: Int): Socket {
+        return Socket().apply {
+            bind(InetSocketAddress(bindHost, bindPort.coerceAtLeast(0)))
+        }
     }
 }
 

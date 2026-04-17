@@ -12,7 +12,7 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class TransferClient(
-    private val okHttpClient: OkHttpClient,
+    private val clientProvider: () -> OkHttpClient,
     private val json: Json,
 ) {
     suspend fun offerTransfer(
@@ -24,7 +24,7 @@ class TransferClient(
             .post(json.encodeToString(TransferOffer.serializer(), offer).toRequestBody("application/json".toMediaType()))
             .build()
 
-        okHttpClient.newCall(request).execute().use { response ->
+        clientProvider().newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IllegalStateException("Offer request failed with HTTP ${response.code}.")
             }
@@ -72,7 +72,7 @@ class TransferClient(
             .put(requestBody)
             .build()
 
-        val call = okHttpClient.newCall(request)
+        val call = clientProvider().newCall(request)
         currentCall = call
         onCallReady(call)
 

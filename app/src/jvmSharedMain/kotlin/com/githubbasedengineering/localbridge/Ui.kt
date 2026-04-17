@@ -134,6 +134,8 @@ private fun HeaderSection(uiState: AppUiState) {
             InfoRow(label = "Local address", value = uiState.localAddress?.let { address ->
                 uiState.serverPort?.let { port -> "$address:$port" } ?: address
             } ?: "Waiting for network")
+            InfoRow(label = "Interface", value = uiState.localInterfaceName ?: "Detecting")
+            InfoRow(label = "Routing", value = uiState.routingModeLabel ?: "Automatic")
             InfoRow(label = "Discovery", value = if (uiState.discoveryActive) "Active" else "Not started")
         }
     }

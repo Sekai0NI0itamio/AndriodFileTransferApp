@@ -20,6 +20,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 class TransferServer(
+    private val host: String,
     private val deviceId: String,
     private val deviceName: String,
     private val platformLabel: String,
@@ -27,7 +28,7 @@ class TransferServer(
     private val onOffer: suspend (TransferOffer) -> TransferOfferResponse,
     private val onUpload: suspend (String, Long, ByteReadChannel) -> UploadResult,
 ) {
-    private val engine: ApplicationEngine = embeddedServer(CIO, host = "0.0.0.0", port = port) {
+    private val engine: ApplicationEngine = embeddedServer(CIO, host = host, port = port) {
         install(ContentNegotiation) {
             json(
                 Json {

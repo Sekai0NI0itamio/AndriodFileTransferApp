@@ -110,6 +110,8 @@ data class UploadResult(
 data class AppUiState(
     val deviceName: String,
     val localAddress: String? = null,
+    val localInterfaceName: String? = null,
+    val routingModeLabel: String? = null,
     val serverPort: Int? = null,
     val discoveryActive: Boolean = false,
     val peers: List<PeerDevice> = emptyList(),

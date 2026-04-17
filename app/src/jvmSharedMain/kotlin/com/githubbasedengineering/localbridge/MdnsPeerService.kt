@@ -9,6 +9,7 @@ import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
 
 class MdnsPeerService(
+    private val bindAddress: InetAddress,
     private val selfDeviceId: String,
     private val selfDeviceName: String,
     private val platformLabel: String,
@@ -21,12 +22,9 @@ class MdnsPeerService(
     private var jmDns: JmDNS? = null
 
     fun start() {
-        val address: InetAddress = requireNotNull(NetworkUtils.findLocalIpv4Address()) {
-            "No local IPv4 address was found on the active network."
-        }
         val instanceName = "$selfDeviceName-${selfDeviceId.take(6)}"
 
-        val dns = JmDNS.create(address, instanceName)
+        val dns = JmDNS.create(bindAddress, instanceName)
         val serviceInfo = ServiceInfo.create(
             serviceType,
             instanceName,

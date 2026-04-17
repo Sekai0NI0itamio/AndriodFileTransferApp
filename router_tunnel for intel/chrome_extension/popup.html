@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Router Tunnel</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">Router Tunnel</div>
+
+      <div class="row">
+        <div class="label">Routing</div>
+        <label class="switch">
+          <input id="enabled" type="checkbox" />
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="status" class="status muted">Loading…</div>
+
+      <div class="section">
+        <div class="label">Sites list</div>
+        <div class="hint">Add a URL or domain. It will be normalized to the main domain.</div>
+        <div class="row wide">
+          <input id="domainInput" type="text" placeholder="example.com or https://sub.example.com/path" />
+          <button id="addBtn" class="primary">Add</button>
+        </div>
+        <div id="list" class="list"></div>
+      </div>
+
+      <div class="section">
+        <div class="label">Proxy port</div>
+        <div class="row">
+          <input id="proxyPort" type="number" min="1" max="65535" />
+          <button id="savePort" class="secondary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -31,8 +31,11 @@ class AppController(
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
-    private val httpClient = OkHttpClient.Builder().retryOnConnectionFailure(true).build()
-    private val transferClient = TransferClient(httpClient, json)
+    private var httpClient: OkHttpClient? = null
+    private val transferClient = TransferClient(
+        clientProvider = { requireNotNull(httpClient) { "Transfer networking is not ready yet." } },
+        json = json,
+    )
     private val activeJobs = ConcurrentHashMap<String, Job>()
     private val activeCalls = ConcurrentHashMap<String, Call>()
     private val pauseRequests = ConcurrentHashMap.newKeySet<String>()
@@ -84,8 +87,8 @@ class AppController(
         server?.stop()
         server = null
         platformBridge.onNetworkingDidStop()
-        httpClient.dispatcher.executorService.shutdown()
-        httpClient.connectionPool.evictAll()
+        disposeHttpClient(httpClient)
+        httpClient = null
         scope.cancel()
     }
 
@@ -134,8 +137,14 @@ class AppController(
             platformBridge.downloadsDir.mkdirs()
             platformBridge.onNetworkingWillStart()
 
-            val port = NetworkUtils.findOpenPort()
+            val binding = requireNotNull(NetworkUtils.findPreferredIpv4Binding()) {
+                "No local IPv4 address was found on the active network."
+            }
+            rebuildHttpClient(binding)
+
+            val port = NetworkUtils.findOpenPort(binding.address)
             server = TransferServer(
+                host = binding.address.hostAddress,
                 deviceId = deviceId,
                 deviceName = platformBridge.deviceName,
                 platformLabel = platformBridge.platformLabel,
@@ -145,6 +154,7 @@ class AppController(
             ).also { it.start() }
 
             discovery = MdnsPeerService(
+                bindAddress = binding.address,
                 selfDeviceId = deviceId,
                 selfDeviceName = platformBridge.deviceName,
                 platformLabel = platformBridge.platformLabel,
@@ -155,20 +165,53 @@ class AppController(
 
             mutateState {
                 it.copy(
-                    localAddress = NetworkUtils.findLocalIpv4Address()?.hostAddress,
+                    localAddress = binding.address.hostAddress,
+                    localInterfaceName = binding.interfaceName,
+                    routingModeLabel = if (binding.vpnBypassActive) {
+                        "Physical interface (${binding.interfaceName})"
+                    } else {
+                        "Direct local network"
+                    },
                     serverPort = port,
                     discoveryActive = true,
                     errorMessage = null,
                 )
             }
         } catch (error: Throwable) {
+            discovery?.close()
+            discovery = null
+            server?.stop()
+            server = null
+            disposeHttpClient(httpClient)
+            httpClient = null
+            platformBridge.onNetworkingDidStop()
             mutateState {
                 it.copy(
+                    localAddress = null,
+                    localInterfaceName = null,
+                    routingModeLabel = null,
                     discoveryActive = false,
                     errorMessage = "Local networking could not start: ${error.message ?: "unknown error"}",
                 )
             }
         }
+    }
+
+    private fun rebuildHttpClient(binding: LocalNetworkBinding?) {
+        val previous = httpClient
+        httpClient = OkHttpClient.Builder()
+            .retryOnConnectionFailure(true)
+            .apply {
+                NetworkUtils.createBoundSocketFactory(binding)?.let(::socketFactory)
+            }
+            .build()
+        disposeHttpClient(previous)
+    }
+
+    private fun disposeHttpClient(client: OkHttpClient?) {
+        client ?: return
+        client.dispatcher.executorService.shutdown()
+        client.connectionPool.evictAll()
     }
 
     private fun queueFilesForPeer(peer: PeerDevice, files: List<SelectedLocalFile>) {
