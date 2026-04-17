@@ -13,7 +13,7 @@ LocalBridge is a same-network file transfer app for Android phones and macOS com
 
 ## GitHub Build Workflow
 
-This repository is configured to build on GitHub Actions instead of locally.
+This repository is configured to build on GitHub Actions.
 
 - Android artifacts are built on `ubuntu-latest`.
 - macOS artifacts are built on `macos-15`, which GitHub currently documents as an arm64 Apple Silicon runner.
@@ -73,7 +73,7 @@ Add the copied text to `ANDROID_KEYSTORE_BASE64`. Use the same password you ente
 
 The macOS app now packages without a signing certificate or notarization credentials.
 
-If you run the GitHub Actions workflow or the Gradle task locally, it builds an unsigned DMG for personal use. No Apple Developer certificate, app-specific password, or team ID is required for that path.
+When the GitHub Actions workflow runs, it builds an unsigned DMG for personal use. No Apple Developer certificate, app-specific password, or team ID is required for that path.
 
 ### Add Android Secrets In GitHub
 
