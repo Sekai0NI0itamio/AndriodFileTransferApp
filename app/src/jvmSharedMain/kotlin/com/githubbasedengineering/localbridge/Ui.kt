@@ -109,6 +109,8 @@ fun LocalBridgeApp(
                             downloads = uiState.downloads,
                             onOpen = controller::openDownloaded,
                         )
+
+                        AboutSection()
                     }
                 }
             }
@@ -257,6 +259,24 @@ private fun DownloadsSection(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AboutSection() {
+    SectionCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionTitle("Publisher")
+            Text(
+                text = "Release identity and feedback details.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            InfoRow(label = "Author", value = "Itamio Pupmann")
+            InfoRow(label = "Organization", value = "AsdUnionTech")
+            InfoRow(label = "Support", value = "itamioa743@gmail.com")
+            InfoRow(label = "Android ID", value = "asd.itamio.localbridge")
+            InfoRow(label = "macOS Bundle ID", value = "asd.itamio.localbridge")
         }
     }
 }

@@ -23,6 +23,13 @@ jobs:
     name: Android Release Artifacts
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/localbridge-release.keystore
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -46,6 +53,13 @@ jobs:
         run: |
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Materialize Android release keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          chmod 600 "$ANDROID_KEYSTORE_PATH"
 
       - name: Build Android release outputs
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace
@@ -79,7 +93,8 @@ jobs:
           gradle-version: 8.10.2
 
       - name: Build macOS DMG
-        run: gradle :app:packageDmg --stacktrace
+        shell: bash
+        run: gradle :app:packageReleaseDmg --stacktrace
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

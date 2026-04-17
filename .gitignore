@@ -17,6 +17,12 @@ target/
 *.tar.gz
 *.tgz
 *.rar
+*.jks
+*.keystore
+*.p12
+*.cer
+*.crt
+*.mobileprovision
 *.7z
 *.iso
 *.dmg

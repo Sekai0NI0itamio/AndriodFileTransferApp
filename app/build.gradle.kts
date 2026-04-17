@@ -8,6 +8,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val androidReleaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+val androidReleaseKeystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+val androidReleaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+val androidReleaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+
 kotlin {
     jvmToolchain(17)
 
@@ -56,20 +61,45 @@ kotlin {
 }
 
 android {
-    namespace = "com.githubbasedengineering.localbridge"
+    namespace = "asd.itamio.localbridge"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.githubbasedengineering.localbridge"
+        applicationId = "asd.itamio.localbridge"
         minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            if (androidReleaseKeystorePath != null) {
+                storeFile = file(androidReleaseKeystorePath)
+            }
+            if (androidReleaseKeystorePassword != null) {
+                storePassword = androidReleaseKeystorePassword
+            }
+            if (androidReleaseKeyAlias != null) {
+                keyAlias = androidReleaseKeyAlias
+            }
+            if (androidReleaseKeyPassword != null) {
+                keyPassword = androidReleaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            if (
+                androidReleaseKeystorePath != null &&
+                androidReleaseKeystorePassword != null &&
+                androidReleaseKeyAlias != null &&
+                androidReleaseKeyPassword != null
+            ) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -102,13 +132,18 @@ compose.desktop {
         }
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg)
             packageName = "LocalBridge"
             packageVersion = "1.0.0"
+            description = "Same-network file transfer for Android and macOS."
+            copyright = "Copyright 2026 Itamio Pupmann. All rights reserved."
+            vendor = "AsdUnionTech"
+
+            targetFormats(TargetFormat.Dmg)
 
             macOS {
-                bundleID = "com.githubbasedengineering.localbridge"
+                bundleID = "asd.itamio.localbridge"
                 dockName = "LocalBridge"
+                iconFile.set(project.file("branding/macos/ft.icns"))
             }
         }
     }
