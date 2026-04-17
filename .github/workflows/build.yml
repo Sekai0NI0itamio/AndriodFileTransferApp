@@ -72,7 +72,7 @@ jobs:
             exit 0
           fi
 
-          resolved_alias="$(keytool -list -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" | awk -F': ' '/Alias name:/{print $2; exit}')"
+          resolved_alias="$(keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" | awk -F': ' '/Alias name:/{print $2; exit}')"
 
           if [[ -z "$resolved_alias" ]]; then
             echo "Unable to determine the Android keystore alias." >&2
