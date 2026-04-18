@@ -4,8 +4,13 @@ import io.ktor.utils.io.ByteReadChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +46,13 @@ class AppController(
     private val pauseRequests = ConcurrentHashMap.newKeySet<String>()
     private val progressPersistTimestamps = ConcurrentHashMap<String, Long>()
     private val inboundOffers = ConcurrentHashMap<String, TransferOffer>()
+    private val localTrustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+
+        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+    }
 
     private var deviceId: String = ""
     private var server: TransferServer? = null
@@ -204,11 +216,18 @@ class AppController(
         val previous = httpClient
         httpClient = OkHttpClient.Builder()
             .retryOnConnectionFailure(true)
+            .sslSocketFactory(createLocalSslSocketFactory(), localTrustManager)
             .apply {
                 NetworkUtils.createBoundSocketFactory(binding)?.let(::socketFactory)
             }
             .build()
         disposeHttpClient(previous)
+    }
+
+    private fun createLocalSslSocketFactory(): SSLSocketFactory {
+        return SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(localTrustManager), SecureRandom())
+        }.socketFactory
     }
 
     private fun disposeHttpClient(client: OkHttpClient?) {
