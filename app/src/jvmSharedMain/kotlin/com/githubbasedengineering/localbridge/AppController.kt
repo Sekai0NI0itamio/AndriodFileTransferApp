@@ -4,8 +4,15 @@ import io.ktor.utils.io.ByteReadChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +25,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.OkHttpClient
@@ -32,6 +41,8 @@ class AppController(
         encodeDefaults = true
     }
     private var httpClient: OkHttpClient? = null
+    private val httpClientMutex = Mutex()
+    private val routerTunnelManager = RouterTunnelManager(platformBridge.appDataDir)
     private val transferClient = TransferClient(
         clientProvider = { requireNotNull(httpClient) { "Transfer networking is not ready yet." } },
         json = json,
@@ -41,8 +52,17 @@ class AppController(
     private val pauseRequests = ConcurrentHashMap.newKeySet<String>()
     private val progressPersistTimestamps = ConcurrentHashMap<String, Long>()
     private val inboundOffers = ConcurrentHashMap<String, TransferOffer>()
+    private val localTrustManager = object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+
+        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
+    }
 
     private var deviceId: String = ""
+    private var currentBinding: LocalNetworkBinding? = null
+    private var routerTunnelStatus: RouterTunnelStatus? = null
     private var server: TransferServer? = null
     private var discovery: MdnsPeerService? = null
 
@@ -82,6 +102,7 @@ class AppController(
         activeCalls.clear()
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
+        routerTunnelManager.stop()
         discovery?.close()
         discovery = null
         server?.stop()
@@ -89,6 +110,8 @@ class AppController(
         platformBridge.onNetworkingDidStop()
         disposeHttpClient(httpClient)
         httpClient = null
+        currentBinding = null
+        routerTunnelStatus = null
         scope.cancel()
     }
 
@@ -143,7 +166,14 @@ class AppController(
             val hostAddress = requireNotNull(binding.address.hostAddress) {
                 "Unable to resolve the selected IPv4 address."
             }
-            rebuildHttpClient(binding)
+
+            currentBinding = binding
+            val tunnelResult = if (platformBridge.preferRouterTunnel) {
+                routerTunnelManager.ensureTunnel(binding.interfaceName, timeoutMillis = 0L)
+            } else {
+                RouterTunnelCheckResult()
+            }
+            routerTunnelStatus = tunnelResult.status
 
             val port = NetworkUtils.findOpenPort(binding.address)
             server = TransferServer(
@@ -170,10 +200,11 @@ class AppController(
                 it.copy(
                     localAddress = hostAddress,
                     localInterfaceName = binding.interfaceName,
-                    routingModeLabel = if (binding.vpnBypassActive) {
-                        "Physical interface (${binding.interfaceName})"
-                    } else {
-                        "Direct local network"
+                    routingModeLabel = when {
+                        tunnelResult.status != null -> routerTunnelLabel(tunnelResult.status)
+                        tunnelResult.launchedBundledBinary -> "RouterTunnel starting..."
+                        binding.vpnBypassActive -> "Physical interface (${binding.interfaceName})"
+                        else -> "Direct local network"
                     },
                     serverPort = port,
                     discoveryActive = true,
@@ -200,15 +231,64 @@ class AppController(
         }
     }
 
-    private fun rebuildHttpClient(binding: LocalNetworkBinding?) {
-        val previous = httpClient
-        httpClient = OkHttpClient.Builder()
+    private suspend fun ensureHttpClient() {
+        if (httpClient != null) return
+
+        httpClientMutex.withLock {
+            if (httpClient != null) return
+
+            val binding = currentBinding
+            val tunnelResult = if (platformBridge.preferRouterTunnel) {
+                routerTunnelManager.ensureTunnel(binding?.interfaceName, timeoutMillis = 5_000L)
+            } else {
+                RouterTunnelCheckResult()
+            }
+
+            if (tunnelResult.status != null) {
+                routerTunnelStatus = tunnelResult.status
+                mutateState(persist = false) {
+                    it.copy(routingModeLabel = routerTunnelLabel(tunnelResult.status))
+                }
+            }
+
+            val previous = httpClient
+            httpClient = if (tunnelResult.status != null && platformBridge.preferRouterTunnel) {
+                createProxyHttpClient()
+            } else {
+                createDirectHttpClient(binding)
+            }
+            disposeHttpClient(previous)
+        }
+    }
+
+    private fun createDirectHttpClient(binding: LocalNetworkBinding?): OkHttpClient {
+        return OkHttpClient.Builder()
             .retryOnConnectionFailure(true)
+            .sslSocketFactory(createLocalSslSocketFactory(), localTrustManager)
             .apply {
                 NetworkUtils.createBoundSocketFactory(binding)?.let(::socketFactory)
             }
             .build()
-        disposeHttpClient(previous)
+    }
+
+    private fun createProxyHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .retryOnConnectionFailure(true)
+            .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", ROUTER_TUNNEL_HTTP_PROXY_PORT)))
+            .build()
+    }
+
+    private fun routerTunnelLabel(status: RouterTunnelStatus): String {
+        return when (status.source) {
+            RouterTunnelSource.EXTERNAL -> "RouterTunnel proxy (${status.interfaceName})"
+            RouterTunnelSource.BUNDLED -> "RouterTunnel proxy (bundled, ${status.interfaceName})"
+        }
+    }
+
+    private fun createLocalSslSocketFactory(): SSLSocketFactory {
+        return SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(localTrustManager), SecureRandom())
+        }.socketFactory
     }
 
     private fun disposeHttpClient(client: OkHttpClient?) {
@@ -300,6 +380,8 @@ class AppController(
                 markTransferFailed(transferId, "The target device is not currently discoverable on the network.")
                 return
             }
+
+            ensureHttpClient()
 
             val current = findTransfer(transferId) ?: return
             val offer = TransferOffer(

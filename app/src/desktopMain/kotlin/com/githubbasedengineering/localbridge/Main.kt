@@ -30,6 +30,8 @@ fun main() = application {
 
 private class DesktopPlatformBridge : PlatformBridge {
     override val platformLabel: String = "macOS"
+    override val preferRouterTunnel: Boolean = System.getProperty("os.name").contains("Mac", ignoreCase = true) &&
+        System.getProperty("localbridge.routerTunnel", "true").lowercase() != "false"
     override val deviceName: String = runCatching {
         InetAddress.getLocalHost().hostName
     }.getOrDefault("Mac")

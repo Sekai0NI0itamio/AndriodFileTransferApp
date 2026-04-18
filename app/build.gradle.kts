@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Exec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -12,6 +14,44 @@ val androidReleaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE
 val androidReleaseKeystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
 val androidReleaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
 val androidReleaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+val routerTunnelSourceFile = rootProject.file("router_tunnel for intel/router_tunnel.c")
+val routerTunnelBuildOutputFile = layout.buildDirectory.file("routerTunnel/router_tunnel").get().asFile
+val routerTunnelResourcesRootDir = layout.buildDirectory.dir("routerTunnelResources")
+val routerTunnelResourcesMacosDir = routerTunnelResourcesRootDir.get().asFile.resolve("macos")
+
+val buildRouterTunnelBinary = tasks.register<Exec>("buildRouterTunnelBinary") {
+    onlyIf { System.getProperty("os.name").contains("Mac", ignoreCase = true) }
+    inputs.file(routerTunnelSourceFile)
+    outputs.file(routerTunnelBuildOutputFile)
+
+    doFirst {
+        routerTunnelBuildOutputFile.parentFile.mkdirs()
+    }
+
+    executable = "clang"
+    args = buildList {
+        add("-O2")
+        add("-Wall")
+        add("-Wextra")
+        if (System.getProperty("os.arch").lowercase().contains("arm")) {
+            add("-arch")
+            add("arm64")
+            add("-arch")
+            add("x86_64")
+        }
+        add("-o")
+        add(routerTunnelBuildOutputFile.absolutePath)
+        add(routerTunnelSourceFile.absolutePath)
+    }
+}
+
+val stageRouterTunnelBinary = tasks.register<Copy>("stageRouterTunnelBinary") {
+    onlyIf { System.getProperty("os.name").contains("Mac", ignoreCase = true) }
+    dependsOn(buildRouterTunnelBinary)
+
+    from(routerTunnelBuildOutputFile)
+    into(routerTunnelResourcesMacosDir)
+}
 
 kotlin {
     jvmToolchain(17)
@@ -126,6 +166,7 @@ android {
 compose.desktop {
     application {
         mainClass = "com.githubbasedengineering.localbridge.MainKt"
+        dependsOn("stageRouterTunnelBinary")
 
         buildTypes.release.proguard {
             configurationFiles.from(project.file("compose-desktop.pro"))
@@ -137,6 +178,7 @@ compose.desktop {
             description = "Same-network file transfer for Android and macOS."
             copyright = "Copyright 2026 Itamio Pupmann. All rights reserved."
             vendor = "AsdUnionTech"
+            appResourcesRootDir.set(routerTunnelResourcesRootDir)
 
             targetFormats(TargetFormat.Dmg)
 

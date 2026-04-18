@@ -8,6 +8,7 @@ interface PlatformBridge {
     val deviceName: String
     val appDataDir: File
     val downloadsDir: File
+    val preferRouterTunnel: Boolean get() = false
 
     fun requestPickFiles(onResult: (List<SelectedLocalFile>) -> Unit)
 
